@@ -29,6 +29,12 @@ function fmt(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
 }
 
+function getDefaultExpectedDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + 5);
+  return date.toISOString().split('T')[0];
+}
+
 const statusBadgeColor: Record<PurchaseOrderStatus, 'gray' | 'blue' | 'green' | 'red'> = {
   draft: 'gray',
   ordered: 'blue',
@@ -152,7 +158,7 @@ export default function PurchaseOrdersPage() {
       supplierId: supplier.id,
       supplierName: supplier.name,
       orderDate: new Date().toISOString().split('T')[0],
-      expectedDate: expectedDate || new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
+      expectedDate: expectedDate || getDefaultExpectedDate(),
       status: 'ordered',
       items,
       totalAmount,

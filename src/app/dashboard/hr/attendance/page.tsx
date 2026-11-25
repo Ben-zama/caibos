@@ -4,6 +4,8 @@ import React from 'react';
 import { Card, CardHeader, CardTitle, CardValue } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { mockAttendance } from '@/lib/hr-mock-data';
+import { hrService } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
 import { clsx } from '@/lib/clsx';
 import type { AttendanceStatus } from '@/types';
 
@@ -22,11 +24,12 @@ const statusLabel: Record<AttendanceStatus, string> = {
 };
 
 export default function AttendancePage() {
+  const { data: attendance } = useApiQuery(() => hrService.getAttendance(), mockAttendance);
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   // Deduplicate by employeeId (take first occurrence per employee for display)
   const seen = new Set<string>();
-  const records = mockAttendance.filter(r => {
+  const records = attendance.filter(r => {
     if (seen.has(r.employeeId)) return false;
     seen.add(r.employeeId);
     return true;

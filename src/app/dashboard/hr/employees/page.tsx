@@ -5,15 +5,16 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { mockEmployees } from '@/lib/hr-mock-data';
+import { hrService } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { formatCurrency } from '@/lib/format';
 import { useAuth } from '@/lib/auth-context';
 import { can } from '@/lib/permissions';
 import { clsx } from '@/lib/clsx';
 import { LayoutGrid, List, Search } from 'lucide-react';
 import type { EmploymentStatus } from '@/types';
 
-function fmt(n: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
+const fmt = (n: number) => formatCurrency(n, 0);
 
 const statusColor: Record<EmploymentStatus, 'green' | 'yellow' | 'red'> = {
   active: 'green',
@@ -27,17 +28,18 @@ const statusLabel: Record<EmploymentStatus, string> = {
   terminated: 'Terminated',
 };
 
-const departments = ['All', ...Array.from(new Set(mockEmployees.map(e => e.department))).sort()];
-
 export default function EmployeesPage() {
   const { user } = useAuth();
   const canViewSalary = user?.role ? can(user.role, 'canViewSettings') : false;
+  const { data: employees } = useApiQuery(() => hrService.getEmployees(), mockEmployees);
 
   const [search, setSearch] = useState('');
   const [dept, setDept] = useState('All');
   const [view, setView] = useState<'grid' | 'table'>('table');
 
-  const filtered = mockEmployees.filter(e => {
+  const departments = ['All', ...Array.from(new Set(employees.map(e => e.department))).sort()];
+
+  const filtered = employees.filter(e => {
     const matchesSearch =
       e.name.toLowerCase().includes(search.toLowerCase()) ||
       e.email.toLowerCase().includes(search.toLowerCase()) ||
@@ -51,7 +53,7 @@ export default function EmployeesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Employees</h1>
-          <p className="text-sm text-gray-500 mt-1">{mockEmployees.length} total employees</p>
+          <p className="text-sm text-gray-500 mt-1">{employees.length} total employees</p>
         </div>
         <div className="flex items-center gap-2">
           <button

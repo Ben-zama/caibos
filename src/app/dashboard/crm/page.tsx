@@ -5,12 +5,13 @@ import { Card, CardHeader, CardTitle, CardValue } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { AreaChart } from '@/components/ui/charts/AreaChart';
 import { mockContacts, mockDeals, mockActivities } from '@/lib/mock-data';
-import { Users, Briefcase, TrendingUp, Calendar, ArrowRight, Phone, Mail } from 'lucide-react';
+import { crmService } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { formatCurrency } from '@/lib/format';
+import { Users, Briefcase, TrendingUp, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
-function fmt(n: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
+const fmt = (n: number) => formatCurrency(n, 0);
 
 const stageColor: Record<string, 'gray' | 'blue' | 'yellow' | 'purple' | 'green' | 'red'> = {
   lead: 'gray',
@@ -32,10 +33,14 @@ const pipelineChartData = [
 ];
 
 export default function CRMPage() {
-  const totalPipeline = mockDeals.filter(d => d.stage !== 'won' && d.stage !== 'lost').reduce((s, d) => s + d.value, 0);
-  const wonValue = mockDeals.filter(d => d.stage === 'won').reduce((s, d) => s + d.value, 0);
-  const conversionRate = ((mockDeals.filter(d => d.stage === 'won').length / mockDeals.length) * 100).toFixed(0);
-  const upcomingActivities = mockActivities.filter(a => !a.completed).slice(0, 5);
+  const { data: contacts } = useApiQuery(() => crmService.getContacts(), mockContacts);
+  const { data: deals } = useApiQuery(() => crmService.getDeals(), mockDeals);
+  const { data: activities } = useApiQuery(() => crmService.getActivities(), mockActivities);
+
+  const totalPipeline = deals.filter(d => d.stage !== 'won' && d.stage !== 'lost').reduce((s, d) => s + d.value, 0);
+  const wonValue = deals.filter(d => d.stage === 'won').reduce((s, d) => s + d.value, 0);
+  const conversionRate = deals.length > 0 ? ((deals.filter(d => d.stage === 'won').length / deals.length) * 100).toFixed(0) : '0';
+  const upcomingActivities = activities.filter(a => !a.completed).slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -58,8 +63,8 @@ export default function CRMPage() {
               <Users className="h-4 w-4 text-indigo-600" />
             </div>
           </CardHeader>
-          <CardValue>{mockContacts.length}</CardValue>
-          <p className="mt-1 text-xs text-gray-400">{mockContacts.filter(c => c.type === 'lead').length} leads, {mockContacts.filter(c => c.type === 'client').length} clients</p>
+          <CardValue>{contacts.length}</CardValue>
+          <p className="mt-1 text-xs text-gray-400">{contacts.filter(c => c.type === 'lead').length} leads, {contacts.filter(c => c.type === 'client').length} clients</p>
         </Card>
 
         <Card>
@@ -70,7 +75,7 @@ export default function CRMPage() {
             </div>
           </CardHeader>
           <CardValue>{fmt(totalPipeline)}</CardValue>
-          <p className="mt-1 text-xs text-gray-400">{mockDeals.filter(d => d.stage !== 'won' && d.stage !== 'lost').length} active deals</p>
+          <p className="mt-1 text-xs text-gray-400">{deals.filter(d => d.stage !== 'won' && d.stage !== 'lost').length} active deals</p>
         </Card>
 
         <Card>
@@ -81,7 +86,7 @@ export default function CRMPage() {
             </div>
           </CardHeader>
           <CardValue className="text-green-600">{fmt(wonValue)}</CardValue>
-          <p className="mt-1 text-xs text-gray-400">{mockDeals.filter(d => d.stage === 'won').length} deals closed</p>
+          <p className="mt-1 text-xs text-gray-400">{deals.filter(d => d.stage === 'won').length} deals closed</p>
         </Card>
 
         <Card>
@@ -153,7 +158,7 @@ export default function CRMPage() {
             </Link>
           </CardHeader>
           <div className="space-y-3">
-            {mockContacts.slice(0, 5).map(c => (
+            {contacts.slice(0, 5).map(c => (
               <div key={c.id} className="flex items-center gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 text-sm font-semibold">
                   {c.name.charAt(0)}
@@ -179,7 +184,7 @@ export default function CRMPage() {
           </CardHeader>
           <div className="space-y-3">
             {(['lead', 'qualified', 'proposal', 'negotiation', 'won'] as const).map(stage => {
-              const stageDeals = mockDeals.filter(d => d.stage === stage);
+              const stageDeals = deals.filter(d => d.stage === stage);
               const stageValue = stageDeals.reduce((s, d) => s + d.value, 0);
               const pct = totalPipeline > 0 ? (stageValue / (totalPipeline + wonValue)) * 100 : 0;
               return (

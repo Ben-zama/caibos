@@ -5,6 +5,8 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { mockActivities } from '@/lib/mock-data';
+import { crmService } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
 import { useAuth } from '@/lib/auth-context';
 import { can } from '@/lib/permissions';
 import type { ActivityType } from '@/types';
@@ -22,12 +24,19 @@ const filters = ['All', 'Call', 'Email', 'Meeting', 'Task', 'Note'] as const;
 
 export default function ActivitiesPage() {
   const { role } = useAuth();
-  const [activities, setActivities] = useState(mockActivities);
+  const { data: activities, setData: setActivities } = useApiQuery(
+    () => crmService.getActivities(),
+    mockActivities
+  );
   const [activeFilter, setActiveFilter] = useState<typeof filters[number]>('All');
   const [showCompleted, setShowCompleted] = useState(false);
 
-  const toggleComplete = (id: string) => {
-    setActivities(prev => prev.map(a => a.id === id ? { ...a, completed: !a.completed } : a));
+  const toggleComplete = async (id: string) => {
+    const target = activities.find(a => a.id === id);
+    if (!target) return;
+    const nextCompleted = !target.completed;
+    setActivities(prev => prev.map(a => a.id === id ? { ...a, completed: nextCompleted } : a));
+    await crmService.toggleActivity(id, nextCompleted).catch(() => undefined);
   };
 
   const filtered = activities.filter(a => {

@@ -5,12 +5,13 @@ import { Card, CardHeader, CardTitle, CardValue } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { DonutChart } from '@/components/ui/charts/DonutChart';
 import { mockEmployees, mockLeaveRequests, mockAttendance, mockPayroll } from '@/lib/hr-mock-data';
+import { hrService } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { formatCurrency } from '@/lib/format';
 import { Users, UserX, Clock, Banknote, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
-function fmt(n: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
+const fmt = (n: number) => formatCurrency(n, 0);
 
 const leaveStatusColor: Record<string, 'green' | 'yellow' | 'red'> = {
   approved: 'green',
@@ -27,21 +28,26 @@ const leaveTypeColor: Record<string, 'blue' | 'red' | 'gray' | 'purple' | 'indig
 };
 
 export default function HROverviewPage() {
-  const totalEmployees = mockEmployees.length;
-  const onLeave = mockEmployees.filter(e => e.employmentStatus === 'on_leave').length;
-  const presentToday = mockAttendance.filter(a => a.status === 'present').length;
-  const uniqueAttendance = new Set(mockAttendance.map(a => a.employeeId)).size;
+  const { data: employees } = useApiQuery(() => hrService.getEmployees(), mockEmployees);
+  const { data: leaveRequests } = useApiQuery(() => hrService.getLeaveRequests(), mockLeaveRequests);
+  const { data: attendance } = useApiQuery(() => hrService.getAttendance(), mockAttendance);
+  const { data: payroll } = useApiQuery(() => hrService.getPayroll(), mockPayroll);
+
+  const totalEmployees = employees.length;
+  const onLeave = employees.filter(e => e.employmentStatus === 'on_leave').length;
+  const presentToday = attendance.filter(a => a.status === 'present').length;
+  const uniqueAttendance = new Set(attendance.map(a => a.employeeId)).size;
   const attendanceRate = uniqueAttendance > 0 ? Math.round((presentToday / uniqueAttendance) * 100) : 0;
-  const payrollTotal = mockPayroll.reduce((s, p) => s + p.netPay, 0);
+  const payrollTotal = payroll.reduce((s, p) => s + p.netPay, 0);
 
   // Headcount by department
   const deptMap: Record<string, number> = {};
-  for (const emp of mockEmployees) {
+  for (const emp of employees) {
     deptMap[emp.department] = (deptMap[emp.department] ?? 0) + 1;
   }
   const deptData = Object.entries(deptMap).map(([name, value]) => ({ name, value }));
 
-  const recentLeave = mockLeaveRequests.slice(0, 5);
+  const recentLeave = leaveRequests.slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -68,7 +74,7 @@ export default function HROverviewPage() {
             </div>
           </CardHeader>
           <CardValue>{totalEmployees}</CardValue>
-          <p className="mt-1 text-xs text-gray-400">{mockEmployees.filter(e => e.employmentStatus === 'active').length} active</p>
+          <p className="mt-1 text-xs text-gray-400">{employees.filter(e => e.employmentStatus === 'active').length} active</p>
         </Card>
 
         <Card>
@@ -79,7 +85,7 @@ export default function HROverviewPage() {
             </div>
           </CardHeader>
           <CardValue>{onLeave}</CardValue>
-          <p className="mt-1 text-xs text-gray-400">{mockLeaveRequests.filter(l => l.status === 'pending').length} pending requests</p>
+          <p className="mt-1 text-xs text-gray-400">{leaveRequests.filter(l => l.status === 'pending').length} pending requests</p>
         </Card>
 
         <Card>

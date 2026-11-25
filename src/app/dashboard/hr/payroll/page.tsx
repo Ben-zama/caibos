@@ -5,15 +5,15 @@ import { Card, CardHeader, CardTitle, CardValue } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { mockPayroll } from '@/lib/hr-mock-data';
+import { hrService } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { formatCurrency } from '@/lib/format';
 import { useAuth } from '@/lib/auth-context';
-import { can } from '@/lib/permissions';
 import { clsx } from '@/lib/clsx';
 import { Download, CheckCircle } from 'lucide-react';
 import type { PayrollRun } from '@/types';
 
-function fmt(n: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n);
-}
+const fmt = (n: number) => formatCurrency(n, 2);
 
 type PayStatus = PayrollRun['status'];
 
@@ -23,23 +23,26 @@ const statusColor: Record<PayStatus, 'gray' | 'yellow' | 'green'> = {
   paid: 'green',
 };
 
-const periods = Array.from(new Set(mockPayroll.map(p => p.period)));
-
 export default function PayrollPage() {
   const { user } = useAuth();
-  const canApprove = user?.role ? can(user.role, 'canUpdate') : false;
   const isOwner = user?.role === 'owner';
 
-  const [selectedPeriod, setSelectedPeriod] = useState(periods[0]);
-  const [records, setRecords] = useState<PayrollRun[]>(mockPayroll);
+  const { data: records, setData: setRecords } = useApiQuery(
+    () => hrService.getPayroll(),
+    mockPayroll
+  );
+  const periods = Array.from(new Set(records.map(p => p.period)));
+  const [selectedPeriod, setSelectedPeriod] = useState(periods[0] ?? '');
 
   const filtered = records.filter(r => r.period === selectedPeriod);
   const totalNet = filtered.reduce((s, r) => s + r.netPay, 0);
   const totalGross = filtered.reduce((s, r) => s + r.basicSalary, 0);
   const totalDeductions = filtered.reduce((s, r) => s + r.deductions, 0);
 
-  const approveRecord = (id: string) =>
+  const approveRecord = async (id: string) => {
     setRecords(r => r.map(rec => rec.id === id ? { ...rec, status: 'approved' } : rec));
+    await hrService.approvePayroll(id).catch(() => undefined);
+  };
 
   const downloadPayslip = (emp: string, period: string) => {
     // Simulate download — in production this would generate a PDF

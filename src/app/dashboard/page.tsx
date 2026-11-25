@@ -7,7 +7,18 @@ import { Card, CardHeader, CardTitle, CardValue } from '@/components/ui/Card';
 import { AreaChart } from '@/components/ui/charts/AreaChart';
 import { DonutChart } from '@/components/ui/charts/DonutChart';
 import { Badge } from '@/components/ui/Badge';
-import { mockInvoices, mockDeals, mockActivities, revenueChartData, expenseByCategory, mockBusiness } from '@/lib/mock-data';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { businessesService, crmService, financeService } from '@/lib/api';
+import { computePlatformMetrics } from '@/lib/businesses-utils';
+import { formatCurrency } from '@/lib/format';
+import {
+  mockInvoices,
+  mockDeals,
+  mockActivities,
+  revenueChartData,
+  expenseByCategory,
+  mockBusiness,
+} from '@/lib/mock-data';
 import {
   DollarSign,
   FileText,
@@ -20,14 +31,10 @@ import {
   Phone,
   Mail,
   Calendar,
-  Package,
   AlertTriangle,
+  Building2,
 } from 'lucide-react';
 import Link from 'next/link';
-
-function formatCurrency(n: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
 
 const activityIcon: Record<string, React.ElementType> = {
   call: Phone,
@@ -48,13 +55,21 @@ const activityColor: Record<string, string> = {
 export default function DashboardPage() {
   const { user } = useAuth();
   const { lowStockCount, totalInventoryCost, products } = useInventory();
+  const { data: invoices } = useApiQuery(() => financeService.getInvoices(), mockInvoices);
+  const { data: deals } = useApiQuery(() => crmService.getDeals(), mockDeals);
+  const { data: activities } = useApiQuery(() => crmService.getActivities(), mockActivities);
+  const { data: revenueSeries } = useApiQuery(() => financeService.getRevenueChart(), revenueChartData);
+  const { data: expenseSeries } = useApiQuery(
+    () => financeService.getExpenseBreakdown(),
+    expenseByCategory
+  );
 
-  const totalRevenue = mockInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0);
-  const totalOutstanding = mockInvoices.filter(i => i.status === 'sent' || i.status === 'overdue').reduce((s, i) => s + i.total, 0);
-  const overdueCount = mockInvoices.filter(i => i.status === 'overdue').length;
-  const pipelineValue = mockDeals.filter(d => d.stage !== 'won' && d.stage !== 'lost').reduce((s, d) => s + d.value, 0);
-  const wonDeals = mockDeals.filter(d => d.stage === 'won').length;
-  const upcomingActivities = mockActivities.filter(a => !a.completed).slice(0, 4);
+  const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0);
+  const totalOutstanding = invoices.filter(i => i.status === 'sent' || i.status === 'overdue').reduce((s, i) => s + i.total, 0);
+  const overdueCount = invoices.filter(i => i.status === 'overdue').length;
+  const pipelineValue = deals.filter(d => d.stage !== 'won' && d.stage !== 'lost').reduce((s, d) => s + d.value, 0);
+  const wonDeals = deals.filter(d => d.stage === 'won').length;
+  const upcomingActivities = activities.filter(a => !a.completed).slice(0, 4);
 
   if (user?.role === 'caibos') {
     return <CaibosAdminDashboard />;
@@ -132,7 +147,7 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardValue>{formatCurrency(pipelineValue)}</CardValue>
-          <p className="mt-1 text-xs text-gray-400">{mockDeals.filter(d => d.stage !== 'won' && d.stage !== 'lost').length} active deals</p>
+          <p className="mt-1 text-xs text-gray-400">{deals.filter(d => d.stage !== 'won' && d.stage !== 'lost').length} active deals</p>
         </Card>
 
         <Card>
@@ -160,7 +175,7 @@ export default function DashboardPage() {
             </Link>
           </CardHeader>
           <AreaChart
-            data={revenueChartData}
+            data={revenueSeries}
             index="month"
             categories={['revenue', 'expenses']}
             colors={['#6366f1', '#10b981']}
@@ -177,7 +192,7 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <DonutChart
-            data={expenseByCategory.map(e => ({ name: e.category, value: e.amount }))}
+            data={expenseSeries.map(e => ({ name: e.category, value: e.amount }))}
             valueFormatter={formatCurrency}
             className="h-56"
           />
@@ -194,7 +209,7 @@ export default function DashboardPage() {
             </Link>
           </CardHeader>
           <div className="space-y-3">
-            {mockInvoices.slice(0, 4).map(inv => (
+            {invoices.slice(0, 4).map(inv => (
               <div key={inv.id} className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-gray-900 dark:text-white">{inv.clientName}</p>
@@ -252,43 +267,135 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function CaibosAdminDashboard() {
+  const { data: businesses } = useApiQuery(
+    () => businessesService.list(),
+    businessesService.getInitialSeed()
+  );
+  const { data: chartData } = useApiQuery(
+    () => financeService.getRevenueChart(),
+    revenueChartData
+  );
+  const metrics = computePlatformMetrics(businesses);
+
+  const kpis = [
+    {
+      label: 'Total Businesses',
+      value: String(metrics.totalBusinesses),
+      subtext: `${metrics.activeBusinesses} active · ${metrics.trialBusinesses} trial`,
+      icon: Building2,
+      iconBg: 'bg-indigo-100 dark:bg-indigo-950',
+      iconColor: 'text-indigo-600 dark:text-indigo-400',
+    },
+    {
+      label: 'Paid Subscriptions',
+      value: String(metrics.activeSubscriptions),
+      subtext: 'Pro & Enterprise plans',
+      icon: TrendingUp,
+      iconBg: 'bg-emerald-100 dark:bg-emerald-950',
+      iconColor: 'text-emerald-600 dark:text-emerald-400',
+    },
+    {
+      label: 'Monthly Revenue',
+      value: formatCurrency(metrics.monthlyRevenue),
+      subtext: 'Active monthly recurring',
+      icon: DollarSign,
+      iconBg: 'bg-purple-100 dark:bg-purple-950',
+      iconColor: 'text-purple-600 dark:text-purple-400',
+    },
+    {
+      label: 'Total Platform Users',
+      value: String(metrics.totalUsers),
+      subtext: `${metrics.suspendedBusinesses} suspended accounts`,
+      icon: Users,
+      iconBg: 'bg-amber-100 dark:bg-amber-950',
+      iconColor: 'text-amber-600 dark:text-amber-400',
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Platform Overview</h1>
-        <p className="mt-1 text-sm text-gray-500">Caibos Admin Dashboard</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Platform Overview</h1>
+          <p className="mt-1 text-sm text-gray-500">Caibos Admin Dashboard</p>
+        </div>
+        <Link
+          href="/dashboard/businesses"
+          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700"
+        >
+          View All Businesses
+          <ArrowRight className="h-4 w-4" />
+        </Link>
       </div>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          { label: 'Total Businesses', value: '247', icon: Users, color: 'indigo' },
-          { label: 'Active Subscriptions', value: '198', icon: TrendingUp, color: 'green' },
-          { label: 'Monthly Revenue', value: '$12,840', icon: DollarSign, color: 'purple' },
-          { label: 'Support Tickets', value: '14', icon: FileText, color: 'amber' },
-        ].map(item => (
+        {kpis.map(item => (
           <Card key={item.label}>
             <CardHeader>
               <CardTitle>{item.label}</CardTitle>
-              <div className={`flex h-8 w-8 items-center justify-center rounded-lg bg-${item.color}-100`}>
-                <item.icon className={`h-4 w-4 text-${item.color}-600`} />
+              <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${item.iconBg}`}>
+                <item.icon className={`h-4 w-4 ${item.iconColor}`} />
               </div>
             </CardHeader>
             <CardValue>{item.value}</CardValue>
+            <p className="mt-1 text-xs text-gray-400">{item.subtext}</p>
           </Card>
         ))}
       </div>
-      <Card>
-        <CardHeader>
-          <h3 className="font-semibold text-gray-900 dark:text-white">Platform Revenue</h3>
-        </CardHeader>
-        <AreaChart
-          data={revenueChartData.map(d => ({ month: d.month, revenue: d.revenue * 0.5 }))}
-          index="month"
-          categories={['revenue']}
-          colors={['#8b5cf6']}
-          valueFormatter={(v) => `$${(v / 1000).toFixed(1)}k`}
-          className="h-56"
-        />
-      </Card>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <h3 className="font-semibold text-gray-900 dark:text-white">Platform Revenue</h3>
+          </CardHeader>
+          <AreaChart
+            data={chartData.map(d => ({ month: d.month, revenue: d.revenue * 0.5 }))}
+            index="month"
+            categories={['revenue']}
+            colors={['#8b5cf6']}
+            valueFormatter={(v) => `$${(v / 1000).toFixed(1)}k`}
+            className="h-56"
+          />
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <h3 className="font-semibold text-gray-900 dark:text-white">Recent Businesses</h3>
+            <Link
+              href="/dashboard/businesses"
+              className="flex items-center gap-1 text-xs text-indigo-600 hover:underline"
+            >
+              Manage all <ArrowRight className="h-3 w-3" />
+            </Link>
+          </CardHeader>
+          <div className="space-y-3">
+            {businesses.slice(0, 5).map(biz => (
+              <div key={biz.id} className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+                    {biz.name}
+                  </p>
+                  <p className="truncate text-xs text-gray-400">
+                    {biz.industry} · {biz.usersCount ?? 1} users
+                  </p>
+                </div>
+                <Badge
+                  color={
+                    biz.plan === 'enterprise'
+                      ? 'purple'
+                      : biz.plan === 'pro'
+                        ? 'indigo'
+                        : 'gray'
+                  }
+                  className="capitalize shrink-0"
+                >
+                  {biz.plan}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

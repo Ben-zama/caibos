@@ -6,18 +6,25 @@ import { AreaChart } from '@/components/ui/charts/AreaChart';
 import { BarChart } from '@/components/ui/charts/BarChart';
 import { DonutChart } from '@/components/ui/charts/DonutChart';
 import { mockInvoices, mockExpenses, revenueChartData, expenseByCategory } from '@/lib/mock-data';
+import { financeService } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { formatCurrency } from '@/lib/format';
 import { DollarSign, TrendingUp, TrendingDown, FileText, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
-function fmt(n: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
+const fmt = (n: number) => formatCurrency(n, 0);
 
 export default function FinancePage() {
-  const totalRevenue = mockInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0);
-  const totalExpenses = mockExpenses.reduce((s, e) => s + e.amount, 0);
+  const { data: invoices } = useApiQuery(() => financeService.getInvoices(), mockInvoices);
+  const { data: expenses } = useApiQuery(() => financeService.getExpenses(), mockExpenses);
+  const { data: revenueSeries } = useApiQuery(() => financeService.getRevenueChart(), revenueChartData);
+  const { data: expenseBreakdown } = useApiQuery(() => financeService.getExpenseBreakdown(), expenseByCategory);
+
+  const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0);
+  const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
   const profit = totalRevenue - totalExpenses;
-  const outstanding = mockInvoices.filter(i => i.status === 'sent' || i.status === 'overdue').reduce((s, i) => s + i.total, 0);
+  const outstanding = invoices.filter(i => i.status === 'sent' || i.status === 'overdue').reduce((s, i) => s + i.total, 0);
+  const profitMargin = totalRevenue > 0 ? ((profit / totalRevenue) * 100).toFixed(1) : '0.0';
 
   return (
     <div className="space-y-6">
@@ -61,7 +68,7 @@ export default function FinancePage() {
             </div>
           </CardHeader>
           <CardValue className={profit >= 0 ? 'text-green-600' : 'text-red-600'}>{fmt(profit)}</CardValue>
-          <p className="mt-1 text-xs text-gray-400">Profit margin: {((profit / totalRevenue) * 100).toFixed(1)}%</p>
+          <p className="mt-1 text-xs text-gray-400">Profit margin: {profitMargin}%</p>
         </Card>
         <Card>
           <CardHeader>
@@ -71,7 +78,7 @@ export default function FinancePage() {
             </div>
           </CardHeader>
           <CardValue>{fmt(outstanding)}</CardValue>
-          <p className="mt-1 text-xs text-amber-600">{mockInvoices.filter(i => i.status === 'overdue').length} overdue invoices</p>
+          <p className="mt-1 text-xs text-amber-600">{invoices.filter(i => i.status === 'overdue').length} overdue invoices</p>
         </Card>
       </div>
 
@@ -88,7 +95,7 @@ export default function FinancePage() {
             </Link>
           </CardHeader>
           <AreaChart
-            data={revenueChartData}
+            data={revenueSeries}
             index="month"
             categories={['revenue', 'expenses']}
             colors={['#6366f1', '#10b981']}
@@ -102,7 +109,7 @@ export default function FinancePage() {
             <h3 className="font-semibold text-gray-900 dark:text-white">Expenses Breakdown</h3>
           </CardHeader>
           <DonutChart
-            data={expenseByCategory.map(e => ({ name: e.category, value: e.amount }))}
+            data={expenseBreakdown.map(e => ({ name: e.category, value: e.amount }))}
             valueFormatter={fmt}
             className="h-60"
           />
@@ -115,9 +122,9 @@ export default function FinancePage() {
           <h3 className="font-semibold text-gray-900 dark:text-white">Monthly Profit</h3>
         </CardHeader>
         <BarChart
-          data={revenueChartData.map(d => ({
+          data={revenueSeries.map(d => ({
             month: d.month,
-            profit: (d.revenue as number) - (d.expenses as number),
+            profit: d.revenue - d.expenses,
           }))}
           index="month"
           categories={['profit']}

@@ -273,7 +273,7 @@ export default function ProductsPage() {
               <span>Sort:</span>
               <select
                 value={sortBy}
-                onChange={e => setSortBy(e.target.value as any)}
+                onChange={e => setSortBy(e.target.value as 'name' | 'stock' | 'sellingPrice' | 'margin')}
                 className="rounded-lg border border-gray-200 bg-white py-1.5 px-2 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
               >
                 <option value="name">Product Name</option>

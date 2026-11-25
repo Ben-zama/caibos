@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useSyncExternalStore } from 'react';
 import type {
   Product,
   StockMovement,
@@ -16,6 +16,8 @@ import {
   mockSuppliers,
   mockPurchaseOrders,
 } from '@/lib/inventory-mock-data';
+import { isApiMode } from '@/config/app.config';
+import { inventoryService } from '@/lib/api';
 
 interface InventoryContextType {
   products: Product[];
@@ -72,46 +74,139 @@ const STORAGE_KEYS = {
   purchaseOrders: 'caibos_inventory_purchase_orders',
 };
 
+interface InventoryStoreState {
+  products: Product[];
+  movements: StockMovement[];
+  suppliers: Supplier[];
+  purchaseOrders: PurchaseOrder[];
+}
+
+const INITIAL_STATE: InventoryStoreState = {
+  products: mockProducts,
+  movements: mockStockMovements,
+  suppliers: mockSuppliers,
+  purchaseOrders: mockPurchaseOrders,
+};
+
+let clientState: InventoryStoreState | null = null;
+const inventoryListeners = new Set<() => void>();
+
+function notifyInventoryListeners() {
+  inventoryListeners.forEach(listener => listener());
+}
+
+function loadClientState(): InventoryStoreState {
+  if (clientState) return clientState;
+  try {
+    const savedProducts = localStorage.getItem(STORAGE_KEYS.products);
+    const savedMovements = localStorage.getItem(STORAGE_KEYS.movements);
+    const savedSuppliers = localStorage.getItem(STORAGE_KEYS.suppliers);
+    const savedPOs = localStorage.getItem(STORAGE_KEYS.purchaseOrders);
+
+    clientState = {
+      products: savedProducts ? JSON.parse(savedProducts) : mockProducts,
+      movements: savedMovements ? JSON.parse(savedMovements) : mockStockMovements,
+      suppliers: savedSuppliers ? JSON.parse(savedSuppliers) : mockSuppliers,
+      purchaseOrders: savedPOs ? JSON.parse(savedPOs) : mockPurchaseOrders,
+    };
+  } catch {
+    clientState = { ...INITIAL_STATE };
+  }
+  return clientState;
+}
+
+function updateClientState(updater: (prev: InventoryStoreState) => InventoryStoreState) {
+  const prev = loadClientState();
+  const next = updater(prev);
+  clientState = next;
+  try {
+    localStorage.setItem(STORAGE_KEYS.products, JSON.stringify(next.products));
+    localStorage.setItem(STORAGE_KEYS.movements, JSON.stringify(next.movements));
+    localStorage.setItem(STORAGE_KEYS.suppliers, JSON.stringify(next.suppliers));
+    localStorage.setItem(STORAGE_KEYS.purchaseOrders, JSON.stringify(next.purchaseOrders));
+  } catch {
+    // ignore quota errors
+  }
+  notifyInventoryListeners();
+}
+
+function subscribeInventory(listener: () => void) {
+  inventoryListeners.add(listener);
+  return () => {
+    inventoryListeners.delete(listener);
+  };
+}
+
+function getInventoryServerSnapshot(): InventoryStoreState {
+  return INITIAL_STATE;
+}
+
 export function InventoryProvider({ children }: { children: React.ReactNode }) {
-  const [products, setProducts] = useState<Product[]>(mockProducts);
-  const [movements, setMovements] = useState<StockMovement[]>(mockStockMovements);
-  const [suppliers, setSuppliers] = useState<Supplier[]>(mockSuppliers);
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(mockPurchaseOrders);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const { products, movements, suppliers, purchaseOrders } = useSyncExternalStore(
+    subscribeInventory,
+    loadClientState,
+    getInventoryServerSnapshot
+  );
 
-  // Load from localStorage on client mount
+  // When running against a live backend (NEXT_PUBLIC_API_MODE=api), hydrate from inventoryService
   useEffect(() => {
-    try {
-      const savedProducts = localStorage.getItem(STORAGE_KEYS.products);
-      if (savedProducts) setProducts(JSON.parse(savedProducts));
-
-      const savedMovements = localStorage.getItem(STORAGE_KEYS.movements);
-      if (savedMovements) setMovements(JSON.parse(savedMovements));
-
-      const savedSuppliers = localStorage.getItem(STORAGE_KEYS.suppliers);
-      if (savedSuppliers) setSuppliers(JSON.parse(savedSuppliers));
-
-      const savedPOs = localStorage.getItem(STORAGE_KEYS.purchaseOrders);
-      if (savedPOs) setPurchaseOrders(JSON.parse(savedPOs));
-    } catch {
-      // fallback to mock data
-    } finally {
-      setIsLoaded(true);
-    }
+    if (!isApiMode()) return;
+    let active = true;
+    const hydrate = async () => {
+      try {
+        const [apiProducts, apiMovements, apiSuppliers, apiOrders] = await Promise.all([
+          inventoryService.getProducts(),
+          inventoryService.getMovements(),
+          inventoryService.getSuppliers(),
+          inventoryService.getPurchaseOrders(),
+        ]);
+        if (active) {
+          updateClientState(() => ({
+            products: apiProducts,
+            movements: apiMovements,
+            suppliers: apiSuppliers,
+            purchaseOrders: apiOrders,
+          }));
+        }
+      } catch {
+        // Keep current cached/fallback state if backend is unreachable
+      }
+    };
+    void hydrate();
+    return () => {
+      active = false;
+    };
   }, []);
 
-  // Save changes to localStorage
-  useEffect(() => {
-    if (!isLoaded) return;
-    try {
-      localStorage.setItem(STORAGE_KEYS.products, JSON.stringify(products));
-      localStorage.setItem(STORAGE_KEYS.movements, JSON.stringify(movements));
-      localStorage.setItem(STORAGE_KEYS.suppliers, JSON.stringify(suppliers));
-      localStorage.setItem(STORAGE_KEYS.purchaseOrders, JSON.stringify(purchaseOrders));
-    } catch {
-      // ignore quota errors
-    }
-  }, [products, movements, suppliers, purchaseOrders, isLoaded]);
+  const setProducts = (updater: Product[] | ((prev: Product[]) => Product[])) => {
+    updateClientState(prev => ({
+      ...prev,
+      products: typeof updater === 'function' ? updater(prev.products) : updater,
+    }));
+  };
+
+  const setMovements = (updater: StockMovement[] | ((prev: StockMovement[]) => StockMovement[])) => {
+    updateClientState(prev => ({
+      ...prev,
+      movements: typeof updater === 'function' ? updater(prev.movements) : updater,
+    }));
+  };
+
+  const setSuppliers = (updater: Supplier[] | ((prev: Supplier[]) => Supplier[])) => {
+    updateClientState(prev => ({
+      ...prev,
+      suppliers: typeof updater === 'function' ? updater(prev.suppliers) : updater,
+    }));
+  };
+
+  const setPurchaseOrders = (
+    updater: PurchaseOrder[] | ((prev: PurchaseOrder[]) => PurchaseOrder[])
+  ) => {
+    updateClientState(prev => ({
+      ...prev,
+      purchaseOrders: typeof updater === 'function' ? updater(prev.purchaseOrders) : updater,
+    }));
+  };
 
   const addProduct = (input: Omit<Product, 'id' | 'businessId' | 'status'>): Product => {
     const status = computeStatus(input.stock, input.reorderLevel);
@@ -142,6 +237,10 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       setMovements(prev => [initialMov, ...prev]);
     }
 
+    if (isApiMode()) {
+      void inventoryService.createProduct(input).catch(() => undefined);
+    }
+
     return newProduct;
   };
 
@@ -154,10 +253,16 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         return updated;
       })
     );
+    if (isApiMode()) {
+      void inventoryService.updateProduct(id, updates).catch(() => undefined);
+    }
   };
 
   const deleteProduct = (id: string) => {
     setProducts(prev => prev.filter(p => p.id !== id));
+    if (isApiMode()) {
+      void inventoryService.deleteProduct(id).catch(() => undefined);
+    }
   };
 
   const recordMovement = (data: {
@@ -199,6 +304,9 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       prev.map(p => (p.id === product.id ? { ...p, stock: newStock, status: updatedStatus } : p))
     );
     setMovements(prev => [newMovement, ...prev]);
+    if (isApiMode()) {
+      void inventoryService.recordMovement(data).catch(() => undefined);
+    }
 
     return newMovement;
   };
@@ -245,6 +353,11 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       prev.map(p => (p.id === product.id ? { ...p, stock: newStock, status: updatedStatus } : p))
     );
     setMovements(prev => [newMovement, ...prev]);
+    if (isApiMode()) {
+      void inventoryService
+        .adjustStock({ productId, amount, mode, reason, reference: refCode })
+        .catch(() => undefined);
+    }
   };
 
   const addSupplier = (supplier: Omit<Supplier, 'id' | 'businessId'>): Supplier => {
@@ -254,15 +367,24 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       businessId: 'biz-1',
     };
     setSuppliers(prev => [newSupplier, ...prev]);
+    if (isApiMode()) {
+      void inventoryService.createSupplier(supplier).catch(() => undefined);
+    }
     return newSupplier;
   };
 
   const updateSupplier = (id: string, updates: Partial<Supplier>) => {
     setSuppliers(prev => prev.map(s => (s.id === id ? { ...s, ...updates } : s)));
+    if (isApiMode()) {
+      void inventoryService.updateSupplier(id, updates).catch(() => undefined);
+    }
   };
 
   const deleteSupplier = (id: string) => {
     setSuppliers(prev => prev.filter(s => s.id !== id));
+    if (isApiMode()) {
+      void inventoryService.deleteSupplier(id).catch(() => undefined);
+    }
   };
 
   const createPurchaseOrder = (
@@ -277,6 +399,9 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       businessId: 'biz-1',
     };
     setPurchaseOrders(prev => [newPO, ...prev]);
+    if (isApiMode()) {
+      void inventoryService.createPurchaseOrder(order).catch(() => undefined);
+    }
     return newPO;
   };
 
@@ -328,6 +453,9 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     }
 
     setPurchaseOrders(prev => prev.map(p => (p.id === id ? { ...p, status } : p)));
+    if (isApiMode()) {
+      void inventoryService.updatePurchaseOrderStatus(id, status).catch(() => undefined);
+    }
   };
 
   const quickReorder = (

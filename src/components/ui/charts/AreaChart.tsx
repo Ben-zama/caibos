@@ -27,7 +27,7 @@ export function AreaChart({ data, index, categories, colors = DEFAULT_COLORS, va
   return (
     <div className={className}>
       <ResponsiveContainer width="100%" height="100%">
-        <ReAreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+        <ReAreaChart data={data} margin={{ top: 4, right: 8, left: 4, bottom: 0 }}>
           <defs>
             {categories.map((cat, i) => (
               <linearGradient key={cat} id={`color-${i}`} x1="0" y1="0" x2="0" y2="1">
@@ -38,7 +38,7 @@ export function AreaChart({ data, index, categories, colors = DEFAULT_COLORS, va
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
           <XAxis dataKey={index} tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
-          <YAxis tickFormatter={fmt} tick={{ fontSize: 12 }} tickLine={false} axisLine={false} width={60} />
+          <YAxis tickFormatter={fmt} tick={{ fontSize: 12 }} tickLine={false} axisLine={false} width={76} />
           <Tooltip formatter={(v) => fmt(Number(v))} />
           <Legend />
           {categories.map((cat, i) => (

@@ -5,14 +5,15 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { mockInvoices } from '@/lib/mock-data';
+import { financeService } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { formatCurrency } from '@/lib/format';
 import { useAuth } from '@/lib/auth-context';
 import { can } from '@/lib/permissions';
 import type { InvoiceStatus } from '@/types';
 import { Plus, Search, Eye, Download, Send } from 'lucide-react';
 
-function fmt(n: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
+const fmt = (n: number) => formatCurrency(n, 0);
 
 const statusConfig: Record<InvoiceStatus, { color: 'green' | 'blue' | 'red' | 'gray' | 'yellow'; label: string }> = {
   paid: { color: 'green', label: 'Paid' },
@@ -26,10 +27,11 @@ const tabs = ['All', 'Draft', 'Sent', 'Paid', 'Overdue'] as const;
 
 export default function InvoicesPage() {
   const { role } = useAuth();
+  const { data: invoices } = useApiQuery(() => financeService.getInvoices(), mockInvoices);
   const [activeTab, setActiveTab] = useState<typeof tabs[number]>('All');
   const [search, setSearch] = useState('');
 
-  const filtered = mockInvoices.filter(inv => {
+  const filtered = invoices.filter(inv => {
     const matchTab = activeTab === 'All' || inv.status === activeTab.toLowerCase();
     const matchSearch = inv.clientName.toLowerCase().includes(search.toLowerCase()) ||
       inv.number.toLowerCase().includes(search.toLowerCase());
@@ -37,9 +39,9 @@ export default function InvoicesPage() {
   });
 
   const totals = {
-    all: mockInvoices.reduce((s, i) => s + i.total, 0),
-    paid: mockInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0),
-    outstanding: mockInvoices.filter(i => i.status === 'sent' || i.status === 'overdue').reduce((s, i) => s + i.total, 0),
+    all: invoices.reduce((s, i) => s + i.total, 0),
+    paid: invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0),
+    outstanding: invoices.filter(i => i.status === 'sent' || i.status === 'overdue').reduce((s, i) => s + i.total, 0),
   };
 
   return (
@@ -61,17 +63,17 @@ export default function InvoicesPage() {
         <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
           <p className="text-xs text-gray-500">Total Invoiced</p>
           <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{fmt(totals.all)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{mockInvoices.length} invoices</p>
+          <p className="text-xs text-gray-400 mt-0.5">{invoices.length} invoices</p>
         </div>
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
           <p className="text-xs text-emerald-700">Collected</p>
           <p className="mt-1 text-xl font-bold text-emerald-700">{fmt(totals.paid)}</p>
-          <p className="text-xs text-emerald-600 mt-0.5">{mockInvoices.filter(i => i.status === 'paid').length} paid</p>
+          <p className="text-xs text-emerald-600 mt-0.5">{invoices.filter(i => i.status === 'paid').length} paid</p>
         </div>
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
           <p className="text-xs text-amber-700">Outstanding</p>
           <p className="mt-1 text-xl font-bold text-amber-700">{fmt(totals.outstanding)}</p>
-          <p className="text-xs text-amber-600 mt-0.5">{mockInvoices.filter(i => i.status === 'overdue').length} overdue</p>
+          <p className="text-xs text-amber-600 mt-0.5">{invoices.filter(i => i.status === 'overdue').length} overdue</p>
         </div>
       </div>
 
@@ -91,7 +93,7 @@ export default function InvoicesPage() {
               >
                 {tab}
                 <span className="ml-1.5 rounded-full bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
-                  {tab === 'All' ? mockInvoices.length : mockInvoices.filter(i => i.status === tab.toLowerCase()).length}
+                  {tab === 'All' ? invoices.length : invoices.filter(i => i.status === tab.toLowerCase()).length}
                 </span>
               </button>
             ))}

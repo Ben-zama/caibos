@@ -6,7 +6,11 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useAuth } from '@/lib/auth-context';
 import { mockBusiness, mockUsers } from '@/lib/mock-data';
-import { Building2, Users, Shield, CreditCard, Bell, Globe, Trash2, Plus, Check } from 'lucide-react';
+import { settingsService } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { appConfig } from '@/config/app.config';
+import { formatCurrency } from '@/lib/format';
+import { Building2, Shield, CreditCard, Bell, Trash2, Plus, Check } from 'lucide-react';
 
 const tabs = ['Business Profile', 'Team', 'Subscription', 'Notifications'] as const;
 
@@ -14,6 +18,24 @@ export default function SettingsPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<typeof tabs[number]>('Business Profile');
   const [saved, setSaved] = useState(false);
+
+  const { data: business, setData: setBusiness } = useApiQuery(
+    () => settingsService.getBusinessProfile(),
+    mockBusiness
+  );
+  const { data: team, setData: setTeam } = useApiQuery(
+    () => settingsService.getTeamMembers(),
+    mockUsers.filter(u => u.businessId === mockBusiness.id)
+  );
+
+  const [formValues, setFormValues] = useState({
+    name: business.name,
+    industry: business.industry,
+    email: business.ownerEmail ?? 'contact@acme.com',
+    phone: business.phone ?? '+1 555-0100',
+    website: business.website ?? 'https://acme.com',
+    address: '123 Business Ave, Suite 400, New York, NY 10001',
+  });
 
   if (user?.role !== 'owner') {
     return (
@@ -25,9 +47,16 @@ export default function SettingsPage() {
     );
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    const updated = await settingsService.updateBusinessProfile(formValues);
+    setBusiness(updated);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleRemoveMember = async (id: string) => {
+    await settingsService.removeTeamMember(id);
+    setTeam(prev => prev.filter(m => m.id !== id));
   };
 
   return (
@@ -64,18 +93,21 @@ export default function SettingsPage() {
               </h3>
             </CardHeader>
             <div className="space-y-4">
-              {[
-                { label: 'Business Name', defaultValue: mockBusiness.name },
-                { label: 'Industry', defaultValue: mockBusiness.industry },
-                { label: 'Business Email', defaultValue: 'contact@acme.com' },
-                { label: 'Phone Number', defaultValue: '+1 555-0100' },
-                { label: 'Website', defaultValue: 'https://acme.com' },
-              ].map(field => (
-                <div key={field.label}>
+              {(
+                [
+                  { key: 'name', label: 'Business Name' },
+                  { key: 'industry', label: 'Industry' },
+                  { key: 'email', label: 'Business Email' },
+                  { key: 'phone', label: 'Phone Number' },
+                  { key: 'website', label: 'Website' },
+                ] as const
+              ).map(field => (
+                <div key={field.key}>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{field.label}</label>
                   <input
                     type="text"
-                    defaultValue={field.defaultValue}
+                    value={formValues[field.key]}
+                    onChange={e => setFormValues(prev => ({ ...prev, [field.key]: e.target.value }))}
                     className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                   />
                 </div>
@@ -84,7 +116,8 @@ export default function SettingsPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Business Address</label>
                 <textarea
                   rows={2}
-                  defaultValue="123 Business Ave, Suite 400, New York, NY 10001"
+                  value={formValues.address}
+                  onChange={e => setFormValues(prev => ({ ...prev, address: e.target.value }))}
                   className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white resize-none"
                 />
               </div>
@@ -93,7 +126,21 @@ export default function SettingsPage() {
               <Button onClick={handleSave}>
                 {saved ? <><Check className="h-4 w-4" /> Saved!</> : 'Save Changes'}
               </Button>
-              <Button variant="secondary">Cancel</Button>
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  setFormValues({
+                    name: business.name,
+                    industry: business.industry,
+                    email: business.ownerEmail ?? 'contact@acme.com',
+                    phone: business.phone ?? '+1 555-0100',
+                    website: business.website ?? 'https://acme.com',
+                    address: '123 Business Ave, Suite 400, New York, NY 10001',
+                  })
+                }
+              >
+                Cancel
+              </Button>
             </div>
           </Card>
         </div>
@@ -103,7 +150,7 @@ export default function SettingsPage() {
       {activeTab === 'Team' && (
         <div className="space-y-4 max-w-3xl">
           <div className="flex justify-between items-center">
-            <p className="text-sm text-gray-500">{mockUsers.filter(u => u.businessId === 'biz-001').length} team members</p>
+            <p className="text-sm text-gray-500">{team.length} team members</p>
             <Button><Plus className="h-4 w-4" /> Invite Member</Button>
           </div>
           <Card className="p-0 overflow-hidden">
@@ -117,7 +164,7 @@ export default function SettingsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {mockUsers.filter(u => u.businessId === 'biz-001').map(u => (
+                {team.map(u => (
                   <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
@@ -131,14 +178,18 @@ export default function SettingsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge color={u.role === 'owner' ? 'indigo' : 'yellow' as 'yellow'}>
+                      <Badge color={u.role === 'owner' ? 'indigo' : 'yellow'}>
                         {u.role === 'owner' ? 'Owner' : 'Admin'}
                       </Badge>
                     </td>
                     <td className="px-4 py-3"><Badge color="green">Active</Badge></td>
                     <td className="px-4 py-3 text-right">
                       {u.role !== 'owner' && (
-                        <button className="text-red-400 hover:text-red-600 p-1 rounded">
+                        <button
+                          onClick={() => handleRemoveMember(u.id)}
+                          aria-label={`Remove ${u.name}`}
+                          className="text-red-400 hover:text-red-600 p-1 rounded"
+                        >
                           <Trash2 className="h-4 w-4" />
                         </button>
                       )}
@@ -195,43 +246,37 @@ export default function SettingsPage() {
             <div className="rounded-lg bg-indigo-50 border border-indigo-200 p-4 mb-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-bold text-indigo-700 text-lg capitalize">{mockBusiness.plan} Plan</p>
-                  <p className="text-sm text-indigo-600 mt-0.5">Billed monthly · Next renewal Dec 15, 2024</p>
+                  <p className="font-bold text-indigo-700 text-lg capitalize">{business.plan} Plan</p>
+                  <p className="text-sm text-indigo-600 mt-0.5">Billed monthly · {appConfig.plans[business.plan].description}</p>
                 </div>
                 <Badge color="indigo">Active</Badge>
               </div>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {[
-                { name: 'Free', price: '$0', features: ['1 user', 'Basic Finance', 'Up to 10 invoices'] },
-                { name: 'Pro', price: '$29', features: ['5 users', 'Full Finance', 'Full CRM', 'Reports'], current: true },
-                { name: 'Enterprise', price: '$99', features: ['Unlimited users', 'All features', 'Priority support'] },
-              ].map(plan => (
-                <div
-                  key={plan.name}
-                  className={`rounded-xl border p-4 ${plan.current ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'}`}
-                >
-                  <p className={`font-semibold ${plan.current ? 'text-indigo-700' : 'text-gray-900 dark:text-white'}`}>{plan.name}</p>
-                  <p className={`text-2xl font-bold mt-1 ${plan.current ? 'text-indigo-700' : 'text-gray-900 dark:text-white'}`}>
-                    {plan.price}<span className="text-sm font-normal text-gray-400">/mo</span>
-                  </p>
-                  <ul className="mt-3 space-y-1.5">
-                    {plan.features.map(f => (
-                      <li key={f} className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
-                        <Check className="h-3 w-3 text-green-500 shrink-0" /> {f}
-                      </li>
-                    ))}
-                  </ul>
-                  <Button
-                    variant={plan.current ? 'ghost' : 'primary'}
-                    size="sm"
-                    className="mt-4 w-full"
-                    disabled={plan.current}
+              {Object.values(appConfig.plans).map(plan => {
+                const isCurrent = plan.id === business.plan;
+                return (
+                  <div
+                    key={plan.id}
+                    className={`rounded-xl border p-4 ${isCurrent ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'}`}
                   >
-                    {plan.current ? 'Current' : 'Upgrade'}
-                  </Button>
-                </div>
-              ))}
+                    <p className={`font-semibold ${isCurrent ? 'text-indigo-700' : 'text-gray-900 dark:text-white'}`}>{plan.label}</p>
+                    <p className={`text-2xl font-bold mt-1 ${isCurrent ? 'text-indigo-700' : 'text-gray-900 dark:text-white'}`}>
+                      {formatCurrency(plan.monthlyPrice, 0)}<span className="text-sm font-normal text-gray-400">/mo</span>
+                    </p>
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Up to {plan.seatLimit} team members</p>
+                    <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">{plan.description}</p>
+                    <Button
+                      variant={isCurrent ? 'ghost' : 'primary'}
+                      size="sm"
+                      className="mt-4 w-full"
+                      disabled={isCurrent}
+                    >
+                      {isCurrent ? 'Current' : 'Upgrade'}
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
           </Card>
         </div>

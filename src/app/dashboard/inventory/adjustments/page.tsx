@@ -37,7 +37,7 @@ export default function AdjustmentsPage() {
   const [exactQuantity, setExactQuantity] = useState<number>(0);
   const [reasonPreset, setReasonPreset] = useState(REASON_PRESETS[0]);
   const [customNote, setCustomNote] = useState('');
-  const [reference, setReference] = useState(`ADJ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
+  const [reference, setReference] = useState('');
   const [submittedMessage, setSubmittedMessage] = useState<string | null>(null);
 
   // History search filter
@@ -67,21 +67,21 @@ export default function AdjustmentsPage() {
       adjustmentMode === 'delta' ? deltaQuantity : exactQuantity,
       adjustmentMode,
       finalReason,
-      reference
+      reference.trim() || undefined
     );
 
     setSubmittedMessage(
       `Adjusted ${selectedProduct.name} by ${actualDelta > 0 ? `+${actualDelta}` : actualDelta} ${selectedProduct.unit}. New balance: ${nextStock} ${selectedProduct.unit}.`
     );
 
-    // Reset form with new reference
+    // Reset form
     setTimeout(() => {
       setSubmittedMessage(null);
       setSelectedProductId('');
       setDeltaQuantity(0);
       setExactQuantity(0);
       setCustomNote('');
-      setReference(`ADJ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
+      setReference('');
     }, 4000);
   }
 
@@ -308,6 +308,7 @@ export default function AdjustmentsPage() {
                   type="text"
                   value={reference}
                   onChange={e => setReference(e.target.value)}
+                  placeholder="Auto-generated if left blank"
                   className="w-full rounded-lg border border-gray-200 bg-white py-2 px-3 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white font-mono text-xs"
                 />
               </div>

@@ -5,13 +5,14 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { mockPayments } from '@/lib/mock-data';
+import { financeService } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { formatCurrency } from '@/lib/format';
 import { useAuth } from '@/lib/auth-context';
 import { can } from '@/lib/permissions';
 import { Plus, Search, ArrowUpRight, ArrowDownLeft, CreditCard, Banknote, Smartphone, Building2 } from 'lucide-react';
 
-function fmt(n: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
+const fmt = (n: number) => formatCurrency(n, 0);
 
 const methodIcon: Record<string, React.ElementType> = {
   bank_transfer: Building2,
@@ -29,13 +30,14 @@ const methodLabel: Record<string, string> = {
 
 export default function PaymentsPage() {
   const { role } = useAuth();
+  const { data: payments } = useApiQuery(() => financeService.getPayments(), mockPayments);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'incoming' | 'outgoing'>('all');
 
-  const totalIn = mockPayments.filter(p => p.type === 'incoming').reduce((s, p) => s + p.amount, 0);
-  const totalOut = mockPayments.filter(p => p.type === 'outgoing').reduce((s, p) => s + p.amount, 0);
+  const totalIn = payments.filter(p => p.type === 'incoming').reduce((s, p) => s + p.amount, 0);
+  const totalOut = payments.filter(p => p.type === 'outgoing').reduce((s, p) => s + p.amount, 0);
 
-  const filtered = mockPayments.filter(p => {
+  const filtered = payments.filter(p => {
     const matchFilter = filter === 'all' || p.type === filter;
     const matchSearch = p.description.toLowerCase().includes(search.toLowerCase());
     return matchFilter && matchSearch;
@@ -64,12 +66,12 @@ export default function PaymentsPage() {
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
           <p className="text-xs text-emerald-700 flex items-center gap-1"><ArrowDownLeft className="h-3 w-3" /> Total Incoming</p>
           <p className="mt-1 text-xl font-bold text-emerald-700">{fmt(totalIn)}</p>
-          <p className="text-xs text-emerald-600 mt-0.5">{mockPayments.filter(p => p.type === 'incoming').length} transactions</p>
+          <p className="text-xs text-emerald-600 mt-0.5">{payments.filter(p => p.type === 'incoming').length} transactions</p>
         </div>
         <div className="rounded-xl border border-red-200 bg-red-50 p-4">
           <p className="text-xs text-red-700 flex items-center gap-1"><ArrowUpRight className="h-3 w-3" /> Total Outgoing</p>
           <p className="mt-1 text-xl font-bold text-red-700">{fmt(totalOut)}</p>
-          <p className="text-xs text-red-600 mt-0.5">{mockPayments.filter(p => p.type === 'outgoing').length} transactions</p>
+          <p className="text-xs text-red-600 mt-0.5">{payments.filter(p => p.type === 'outgoing').length} transactions</p>
         </div>
       </div>
 

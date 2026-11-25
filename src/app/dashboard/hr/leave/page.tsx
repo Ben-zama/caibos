@@ -1,15 +1,16 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Card, CardHeader, CardTitle, CardValue } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { mockLeaveRequests } from '@/lib/hr-mock-data';
+import { hrService } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
 import { useAuth } from '@/lib/auth-context';
-import { can } from '@/lib/permissions';
 import { clsx } from '@/lib/clsx';
 import { Check, X } from 'lucide-react';
-import type { LeaveRequest, LeaveStatus, LeaveType } from '@/types';
+import type { LeaveStatus, LeaveType } from '@/types';
 
 const statusColor: Record<LeaveStatus, 'green' | 'yellow' | 'red'> = {
   approved: 'green',
@@ -29,15 +30,22 @@ const leaveTypes: LeaveType[] = ['annual', 'sick', 'unpaid', 'maternity', 'pater
 
 export default function LeavePage() {
   const { user } = useAuth();
-  const canApprove = user?.role ? can(user.role, 'canUpdate') : false;
   const isOwner = user?.role === 'owner';
 
-  const [requests, setRequests] = useState<LeaveRequest[]>(mockLeaveRequests);
+  const { data: requests, setData: setRequests } = useApiQuery(
+    () => hrService.getLeaveRequests(),
+    mockLeaveRequests
+  );
 
-  const approve = (id: string) =>
+  const approve = async (id: string) => {
     setRequests(r => r.map(req => req.id === id ? { ...req, status: 'approved' } : req));
-  const reject = (id: string) =>
+    await hrService.approveLeave(id).catch(() => undefined);
+  };
+
+  const reject = async (id: string) => {
     setRequests(r => r.map(req => req.id === id ? { ...req, status: 'rejected' } : req));
+    await hrService.rejectLeave(id).catch(() => undefined);
+  };
 
   // Balance summary: approved days per type
   const balanceSummary = leaveTypes.map(type => {

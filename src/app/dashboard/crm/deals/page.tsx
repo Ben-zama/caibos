@@ -4,14 +4,15 @@ import React, { useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { mockDeals } from '@/lib/mock-data';
+import { crmService } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { formatCurrency } from '@/lib/format';
 import { useAuth } from '@/lib/auth-context';
 import { can } from '@/lib/permissions';
 import type { Deal, DealStage } from '@/types';
 import { Plus, GripVertical } from 'lucide-react';
 
-function fmt(n: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
+const fmt = (n: number) => formatCurrency(n, 0);
 
 const stages: { key: DealStage; label: string; color: string; bg: string; badge: 'gray' | 'blue' | 'yellow' | 'purple' | 'green' | 'red' }[] = [
   { key: 'lead', label: 'Lead', color: 'text-gray-600', bg: 'bg-gray-50 border-gray-200', badge: 'gray' },
@@ -47,7 +48,7 @@ function DealCard({ deal }: { deal: Deal }) {
 
 export default function DealsPage() {
   const { role } = useAuth();
-  const [deals, setDeals] = useState<Deal[]>(mockDeals);
+  const { data: deals } = useApiQuery(() => crmService.getDeals(), mockDeals);
   const [view, setView] = useState<'kanban' | 'table'>('kanban');
 
   const totalPipeline = deals.filter(d => d.stage !== 'lost').reduce((s, d) => s + d.value, 0);

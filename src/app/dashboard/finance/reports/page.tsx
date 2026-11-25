@@ -7,17 +7,23 @@ import { BarChart } from '@/components/ui/charts/BarChart';
 import { DonutChart } from '@/components/ui/charts/DonutChart';
 import { Button } from '@/components/ui/Button';
 import { mockInvoices, mockExpenses, revenueChartData, expenseByCategory } from '@/lib/mock-data';
+import { financeService } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { formatCurrency } from '@/lib/format';
 import { Download, TrendingUp, TrendingDown, DollarSign, FileText } from 'lucide-react';
 
-function fmt(n: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
+const fmt = (n: number) => formatCurrency(n, 0);
 
 export default function ReportsPage() {
-  const totalRevenue = mockInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0);
-  const totalExpenses = mockExpenses.reduce((s, e) => s + e.amount, 0);
+  const { data: invoices } = useApiQuery(() => financeService.getInvoices(), mockInvoices);
+  const { data: expenses } = useApiQuery(() => financeService.getExpenses(), mockExpenses);
+  const { data: revenueSeries } = useApiQuery(() => financeService.getRevenueChart(), revenueChartData);
+  const { data: breakdown } = useApiQuery(() => financeService.getExpenseBreakdown(), expenseByCategory);
+
+  const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0);
+  const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
   const netProfit = totalRevenue - totalExpenses;
-  const profitMargin = ((netProfit / totalRevenue) * 100).toFixed(1);
+  const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0.0';
 
   const plData = [
     { label: 'Gross Revenue', amount: totalRevenue, type: 'income' },
@@ -43,7 +49,7 @@ export default function ReportsPage() {
           { label: 'Total Revenue', value: fmt(totalRevenue), icon: DollarSign, color: 'green', trend: '+12.5%' },
           { label: 'Total Expenses', value: fmt(totalExpenses), icon: TrendingDown, color: 'red', trend: '+3.2%' },
           { label: 'Net Profit', value: fmt(netProfit), icon: TrendingUp, color: netProfit >= 0 ? 'green' : 'red', trend: `${profitMargin}% margin` },
-          { label: 'Invoices Issued', value: mockInvoices.length.toString(), icon: FileText, color: 'indigo', trend: `${mockInvoices.filter(i => i.status === 'paid').length} paid` },
+          { label: 'Invoices Issued', value: invoices.length.toString(), icon: FileText, color: 'indigo', trend: `${invoices.filter(i => i.status === 'paid').length} paid` },
         ].map(item => (
           <div key={item.label} className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
             <p className="text-xs text-gray-500">{item.label}</p>
@@ -87,7 +93,7 @@ export default function ReportsPage() {
             <span className="text-xs text-gray-400">7 months</span>
           </CardHeader>
           <AreaChart
-            data={revenueChartData}
+            data={revenueSeries}
             index="month"
             categories={['revenue', 'expenses']}
             colors={['#6366f1', '#10b981']}
@@ -102,7 +108,7 @@ export default function ReportsPage() {
             <h3 className="font-semibold text-gray-900 dark:text-white">Expense Categories</h3>
           </CardHeader>
           <DonutChart
-            data={expenseByCategory.map(e => ({ name: e.category, value: e.amount }))}
+            data={breakdown.map(e => ({ name: e.category, value: e.amount }))}
             valueFormatter={fmt}
             className="h-52"
           />
@@ -115,9 +121,9 @@ export default function ReportsPage() {
           <h3 className="font-semibold text-gray-900 dark:text-white">Monthly Profit</h3>
         </CardHeader>
         <BarChart
-          data={revenueChartData.map(d => ({
+          data={revenueSeries.map(d => ({
             month: d.month,
-            profit: (d.revenue as number) - (d.expenses as number),
+            profit: d.revenue - d.expenses,
           }))}
           index="month"
           categories={['profit']}
@@ -145,7 +151,7 @@ export default function ReportsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {mockInvoices.filter(i => i.status !== 'paid' && i.status !== 'draft').map(inv => (
+              {invoices.filter(i => i.status !== 'paid' && i.status !== 'draft').map(inv => (
                 <tr key={inv.id}>
                   <td className="py-3 font-medium text-gray-900 dark:text-white">{inv.clientName}</td>
                   <td className="py-3 text-right text-gray-500">{inv.status === 'sent' ? fmt(inv.total) : '—'}</td>

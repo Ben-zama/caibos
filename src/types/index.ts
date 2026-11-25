@@ -9,13 +9,76 @@ export interface User {
   avatar?: string;
 }
 
+export type BusinessPlan = 'free' | 'pro' | 'enterprise';
+export type BusinessStatus = 'active' | 'trial' | 'suspended';
+
 export interface Business {
   id: string;
   name: string;
   industry: string;
-  plan: 'free' | 'pro' | 'enterprise';
+  plan: BusinessPlan;
+  status?: BusinessStatus;
   ownerId: string;
+  ownerName?: string;
+  ownerEmail?: string;
+  usersCount?: number;
+  monthlyRevenue?: number;
+  location?: string;
+  phone?: string;
+  website?: string;
+  lastActiveAt?: string;
+  modules?: string[];
   createdAt: string;
+}
+
+export interface CreateBusinessInput {
+  name: string;
+  industry: string;
+  plan: BusinessPlan;
+  status: BusinessStatus;
+  ownerName: string;
+  ownerEmail: string;
+  location?: string;
+  usersCount?: number;
+}
+
+export interface UpdateBusinessInput {
+  name?: string;
+  industry?: string;
+  plan?: BusinessPlan;
+  status?: BusinessStatus;
+  ownerName?: string;
+  ownerEmail?: string;
+  location?: string;
+  usersCount?: number;
+  monthlyRevenue?: number;
+  modules?: string[];
+}
+
+export interface PlatformMetrics {
+  totalBusinesses: number;
+  activeBusinesses: number;
+  trialBusinesses: number;
+  suspendedBusinesses: number;
+  activeSubscriptions: number;
+  monthlyRevenue: number;
+  totalUsers: number;
+}
+
+export interface AuthSession {
+  user: User;
+  token?: string;
+  refreshToken?: string;
+}
+
+export interface ApiResponse<T> {
+  data: T;
+  message?: string;
+  meta?: {
+    total?: number;
+    page?: number;
+    pageSize?: number;
+  };
 }
 
 // Finance types

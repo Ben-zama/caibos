@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { DonutChart } from '@/components/ui/charts/DonutChart';
 import { mockExpenses, expenseByCategory } from '@/lib/mock-data';
+import { financeService } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { formatCurrency } from '@/lib/format';
 import { useAuth } from '@/lib/auth-context';
 import { can } from '@/lib/permissions';
 import { Plus, Search } from 'lucide-react';
 
-function fmt(n: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
+const fmt = (n: number) => formatCurrency(n, 0);
 
 const categoryColors: Record<string, 'indigo' | 'green' | 'yellow' | 'red' | 'purple' | 'blue' | 'gray'> = {
   Rent: 'indigo',
@@ -25,13 +26,15 @@ const categoryColors: Record<string, 'indigo' | 'green' | 'yellow' | 'red' | 'pu
 
 export default function ExpensesPage() {
   const { role } = useAuth();
+  const { data: expenses } = useApiQuery(() => financeService.getExpenses(), mockExpenses);
+  const { data: breakdown } = useApiQuery(() => financeService.getExpenseBreakdown(), expenseByCategory);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
 
-  const categories = ['All', ...Array.from(new Set(mockExpenses.map(e => e.category)))];
-  const total = mockExpenses.reduce((s, e) => s + e.amount, 0);
+  const categories = ['All', ...Array.from(new Set(expenses.map(e => e.category)))];
+  const total = expenses.reduce((s, e) => s + e.amount, 0);
 
-  const filtered = mockExpenses.filter(exp => {
+  const filtered = expenses.filter(exp => {
     const matchCat = categoryFilter === 'All' || exp.category === categoryFilter;
     const matchSearch = exp.description.toLowerCase().includes(search.toLowerCase()) ||
       (exp.vendor?.toLowerCase().includes(search.toLowerCase()) ?? false);
@@ -56,17 +59,17 @@ export default function ExpensesPage() {
           <h3 className="font-semibold text-gray-900 dark:text-white mb-1">By Category</h3>
           <p className="text-xs text-gray-400 mb-4">Total: {fmt(total)}</p>
           <DonutChart
-            data={expenseByCategory.map(e => ({ name: e.category, value: e.amount }))}
+            data={breakdown.map(e => ({ name: e.category, value: e.amount }))}
             valueFormatter={fmt}
             className="h-48"
           />
           <div className="mt-4 space-y-2">
-            {expenseByCategory.map(e => (
+            {breakdown.map(e => (
               <div key={e.category} className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">{e.category}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-gray-900 font-medium">{fmt(e.amount)}</span>
-                  <span className="text-xs text-gray-400">{((e.amount / total) * 100).toFixed(0)}%</span>
+                  <span className="text-xs text-gray-400">{total > 0 ? ((e.amount / total) * 100).toFixed(0) : 0}%</span>
                 </div>
               </div>
             ))}
